@@ -1,0 +1,257 @@
+-- ===========================
+-- 1 — Create user_roles table
+-- ===========================
+CREATE TABLE IF NOT EXISTS public.user_roles (
+    id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    role text NOT NULL CHECK (role IN ('admin', 'manager', 'lab_user'))
+);
+
+-- ===========================
+-- 2 — Drop all existing policies
+-- ===========================
+DO $$
+DECLARE
+    r record;
+BEGIN
+    FOR r IN
+        SELECT schemaname, tablename, policyname
+        FROM pg_policies
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS "%s" ON %I.%I;', r.policyname, r.schemaname, r.tablename);
+    END LOOP;
+END$$;
+
+-- ===========================
+-- 3 — Drop and recreate has_role()
+-- ===========================
+DROP FUNCTION IF EXISTS public.has_role(text);
+
+CREATE OR REPLACE FUNCTION public.has_role(p_role text) RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM user_roles
+    WHERE user_roles.id = auth.uid()
+      AND user_roles.role = p_role
+  );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+
+-- ===========================
+-- 4 — Sync roles automatically
+-- ===========================
+-- This will insert new users into user_roles as 'lab_user' by default
+INSERT INTO public.user_roles (id, role)
+SELECT id, 'lab_user'
+FROM auth.users
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.user_roles WHERE user_roles.id = auth.users.id
+);
+
+-- ===========================
+-- 5 — Sync profiles table
+-- ===========================
+INSERT INTO profiles (id, role)
+SELECT ur.id, ur.role
+FROM user_roles ur
+WHERE NOT EXISTS (
+    SELECT 1 FROM profiles WHERE profiles.id = ur.id
+);
+
+-- ===========================
+-- 6 — Sync admins table
+-- ===========================
+INSERT INTO admins (id)
+SELECT id
+FROM user_roles
+WHERE role = 'admin'
+AND NOT EXISTS (
+    SELECT 1 FROM admins WHERE admins.id = user_roles.id
+);
+
+-- ===========================
+-- 7 — Sync managers table
+-- ===========================
+INSERT INTO managers (id)
+SELECT id
+FROM user_roles
+WHERE role = 'manager'
+AND NOT EXISTS (
+    SELECT 1 FROM managers WHERE managers.id = user_roles.id
+);
+
+-- ===========================
+-- 8 — Recreate Policies
+-- ===========================
+
+-- Adjustments
+CREATE POLICY "Admins full access adjustments"
+ON public.adjustments FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access adjustments"
+ON public.adjustments FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users adjustments access"
+ON public.adjustments FOR ALL TO public
+USING (public.has_role('lab_user'))
+WITH CHECK (public.has_role('lab_user'));
+
+-- Inventory
+CREATE POLICY "Admins full access inventory"
+ON public.inventory FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access inventory"
+ON public.inventory FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users view inventory"
+ON public.inventory FOR SELECT TO public
+USING (public.has_role('lab_user'));
+
+-- Items
+CREATE POLICY "Admins full access items"
+ON public.items FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access items"
+ON public.items FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users view items"
+ON public.items FOR SELECT TO public
+USING (public.has_role('lab_user'));
+
+-- Locations
+CREATE POLICY "Admins full access locations"
+ON public.locations FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access locations"
+ON public.locations FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users view locations"
+ON public.locations FOR SELECT TO public
+USING (public.has_role('lab_user'));
+
+-- Organizations
+CREATE POLICY "Admins full access organizations"
+ON public.organizations FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access organizations"
+ON public.organizations FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users view organizations"
+ON public.organizations FOR SELECT TO public
+USING (public.has_role('lab_user'));
+
+-- Profiles
+CREATE POLICY "Admins full access profiles"
+ON public.profiles FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access profiles"
+ON public.profiles FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users view own profile"
+ON public.profiles FOR SELECT TO public
+USING (id = auth.uid() AND public.has_role('lab_user'));
+
+CREATE POLICY "Users can update own profile"
+ON public.profiles FOR UPDATE TO public
+USING (id = auth.uid())
+WITH CHECK (id = auth.uid());
+
+-- Purchase Orders
+CREATE POLICY "Admins full access purchase_orders"
+ON public.purchase_orders FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access purchase_orders"
+ON public.purchase_orders FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users view purchase_orders"
+ON public.purchase_orders FOR SELECT TO public
+USING (public.has_role('lab_user'));
+
+CREATE POLICY "Lab users update purchase_orders"
+ON public.purchase_orders FOR UPDATE TO public
+USING (public.has_role('lab_user'))
+WITH CHECK (public.has_role('lab_user'));
+
+-- Purchase Order Lines
+CREATE POLICY "Admins full access purchase_order_lines"
+ON public.purchase_order_lines FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access purchase_order_lines"
+ON public.purchase_order_lines FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users view purchase_order_lines"
+ON public.purchase_order_lines FOR SELECT TO public
+USING (public.has_role('lab_user'));
+
+-- Vendors
+CREATE POLICY "Admins full access vendors"
+ON public.vendors FOR ALL TO public
+USING (public.has_role('admin'))
+WITH CHECK (public.has_role('admin'));
+
+CREATE POLICY "Managers full access vendors"
+ON public.vendors FOR ALL TO public
+USING (public.has_role('manager'))
+WITH CHECK (public.has_role('manager'));
+
+CREATE POLICY "Lab users view vendors"
+ON public.vendors FOR SELECT TO public
+USING (public.has_role('lab_user'));
+
+-- ============================================
+-- 9 — Service Role Permissions for user roles
+-- ============================================
+
+-- ✅ Make sure service_role can use the schema
+GRANT USAGE ON SCHEMA public TO service_role;
+
+-- ✅ Allow service_role to SELECT/INSERT/UPDATE/DELETE in user_roles
+GRANT ALL PRIVILEGES ON TABLE public.user_roles TO service_role;
+
+-- ✅ If user_roles.id is a UUID or serial, make sure service_role can use the sequence
+DO $$
+DECLARE
+    seq RECORD;
+BEGIN
+    FOR seq IN
+        SELECT relname
+        FROM pg_class
+        WHERE relkind = 'S'
+          AND relnamespace = 'public'::regnamespace
+          AND relname LIKE 'user_roles_%seq'
+    LOOP
+        EXECUTE format('GRANT USAGE, SELECT, UPDATE ON SEQUENCE public.%I TO service_role', seq.relname);
+    END LOOP;
+END $$;
