@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -9,6 +9,26 @@ export default function SetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const router = useRouter();
+
+  // ✅ Restore Supabase session from the password-reset link
+  useEffect(() => {
+    const restoreSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (!data.session) {
+        const { error: recoverError } = await supabase.auth.getSessionFromUrl({
+          storeSession: true,
+        });
+
+        if (recoverError) {
+          console.error("Session restore failed:", recoverError.message);
+          setErrorMsg("Invalid or expired link.");
+        }
+      }
+    };
+
+    restoreSession();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +42,6 @@ export default function SetPasswordPage() {
     setLoading(true);
 
     try {
-      // ✅ Update the invited user's password (session is already active via /auth/callback)
       const { error } = await supabase.auth.updateUser({ password });
 
       if (error) {
@@ -31,7 +50,6 @@ export default function SetPasswordPage() {
         return;
       }
 
-      // ✅ Redirect to dashboard after success
       router.push("/dashboard");
     } catch (err: any) {
       console.error("Unexpected error:", err);
