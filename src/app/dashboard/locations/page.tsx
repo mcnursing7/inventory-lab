@@ -18,7 +18,6 @@ export default function LocationsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [newLocation, setNewLocation] = useState("");
   const [message, setMessage] = useState<Message | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchLocations();
@@ -72,18 +71,25 @@ export default function LocationsPage() {
   const deleteLocation = async (id: string) => {
     if (!confirm("Are you sure you want to delete this location?")) return;
 
-    setDeletingId(id);
-
-    const { data, error } = await supabase
-      .from("locations")
-      .delete()
-      .eq("id", id)
-      .select(); // forces Supabase to return deleted rows
-
-    setDeletingId(null);
+    const { error } = await supabase.from("locations").delete().eq("id", id);
 
     if (error) {
       console.error("❌ Error deleting location:", error.message);
+
+      // Handle RLS or permission denial gracefully
+      if (
+        error.message.includes("permission denied") ||
+        error.message.includes("policy") ||
+        error.message.includes("delete") ||
+        error.message.includes("violates")
+      ) {
+        setMessage({
+          text: "🚫 Delete not allowed for this user.",
+          type: "error",
+        });
+        return;
+      }
+
       setMessage({
         text: "❌ Error deleting location: " + error.message,
         type: "error",
@@ -91,18 +97,26 @@ export default function LocationsPage() {
       return;
     }
 
-    if (!data || data.length === 0) {
-      // RLS blocked delete — no rows actually deleted
+    // Double-check if the row still exists — handles silent RLS block
+    const { count } = await supabase
+      .from("locations")
+      .select("id", { count: "exact", head: true })
+      .eq("id", id);
+
+    if (count && count > 0) {
+      // RLS blocked delete silently
       setMessage({
-        text: "⚠️ You don’t have permission to delete this location.",
+        text: "🚫 Delete not allowed for this user.",
         type: "error",
       });
-      return;
+    } else {
+      // Delete really succeeded
+      setLocations((prev) => prev.filter((loc) => loc.id !== id));
+      setMessage({
+        text: "✅ Location deleted successfully!",
+        type: "success",
+      });
     }
-
-    // Successful delete
-    setLocations((prev) => prev.filter((loc) => loc.id !== id));
-    setMessage({ text: "✅ Location deleted successfully!", type: "success" });
   };
 
   return (
@@ -154,14 +168,9 @@ export default function LocationsPage() {
               <span>{loc.name}</span>
               <button
                 onClick={() => deleteLocation(loc.id)}
-                disabled={deletingId === loc.id}
-                className={`px-3 py-1 rounded text-white ${
-                  deletingId === loc.id
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-red-500 hover:bg-red-600"
-                }`}
+                className="px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
               >
-                {deletingId === loc.id ? "Deleting..." : "Delete"}
+                X
               </button>
             </li>
           ))}
