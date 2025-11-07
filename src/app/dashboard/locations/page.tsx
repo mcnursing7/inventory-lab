@@ -23,6 +23,11 @@ export default function LocationsPage() {
     fetchLocations();
   }, []);
 
+  const showMessage = (msg: Message) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(null), 3000); // auto-hide
+  };
+
   const fetchLocations = async () => {
     const { data, error } = await supabase
       .from("locations")
@@ -31,7 +36,7 @@ export default function LocationsPage() {
 
     if (error) {
       console.error("❌ Error fetching locations:", error.message);
-      setMessage({
+      showMessage({
         text: "❌ Error fetching locations: " + error.message,
         type: "error",
       });
@@ -57,67 +62,61 @@ export default function LocationsPage() {
 
     if (error) {
       console.error("❌ Supabase insert error:", error.message);
-      setMessage({
+      showMessage({
         text: "❌ Error adding location: " + error.message,
         type: "error",
       });
-    } else if (data && data.length > 0) {
+    } else {
       setLocations((prev) => [...(data || []), ...prev]);
       setNewLocation("");
-      setMessage({ text: "✅ Location added successfully!", type: "success" });
-    } else {
-      setMessage({ text: "🚫 Add not allowed for this user.", type: "error" });
+      showMessage({ text: "✅ Location added successfully!", type: "success" });
     }
   };
 
   const deleteLocation = async (id: string) => {
-  if (!confirm("Are you sure you want to delete this location?")) return;
+    if (!confirm("Are you sure you want to delete this location?")) return;
 
-  const { error } = await supabase.from("locations").delete().eq("id", id);
+    const { error } = await supabase.from("locations").delete().eq("id", id);
 
-  if (error) {
-    console.error("❌ Error deleting location:", error.message);
-    setMessage({
-      text: "❌ Error deleting location: " + error.message,
-      type: "error",
-    });
-    return;
-  }
+    if (error) {
+      console.error("❌ Error deleting location:", error.message);
+      showMessage({
+        text: "❌ Error deleting location: " + error.message,
+        type: "error",
+      });
+      return;
+    }
 
-  // Wait a moment to let RLS enforcement complete
-  await new Promise((resolve) => setTimeout(resolve, 700));
+    // ✅ Give RLS time to rollback silently
+    await new Promise((resolve) => setTimeout(resolve, 700));
 
-  // Now verify whether the row is actually deleted
-  const { data: stillThere, error: checkError } = await supabase
-    .from("locations")
-    .select("id")
-    .eq("id", id);
+    // ✅ Check if the record was truly deleted or blocked by RLS
+    const { data: stillThere, error: checkError } = await supabase
+      .from("locations")
+      .select("id")
+      .eq("id", id);
 
-  if (checkError) {
-    console.error("❌ Error checking delete:", checkError.message);
-    setMessage({
-      text: "⚠️ Could not verify delete.",
-      type: "error",
-    });
-    return;
-  }
+    if (checkError) {
+      console.error("❌ Error verifying delete:", checkError.message);
+      showMessage({ text: "⚠️ Could not verify delete.", type: "error" });
+      return;
+    }
 
-  if (stillThere && stillThere.length > 0) {
-    // Row still exists → RLS blocked the delete silently
-    setMessage({
-      text: "🚫 Delete not allowed for this user.",
-      type: "error",
-    });
-  } else {
-    // Row is gone → success
-    setLocations((prev) => prev.filter((loc) => loc.id !== id));
-    setMessage({
-      text: "✅ Location deleted successfully!",
-      type: "success",
-    });
-  }
-};
-
+    if (stillThere && stillThere.length > 0) {
+      // ✅ RLS blocked deletion
+      showMessage({
+        text: "🚫 Delete not allowed for this user.",
+        type: "error",
+      });
+    } else {
+      // ✅ Deletion succeeded
+      setLocations((prev) => prev.filter((loc) => loc.id !== id));
+      showMessage({
+        text: "✅ Location deleted successfully!",
+        type: "success",
+      });
+    }
+  };
 
   return (
     <div className="p-6">
@@ -168,7 +167,7 @@ export default function LocationsPage() {
               <span>{loc.name}</span>
               <button
                 onClick={() => deleteLocation(loc.id)}
-                className="px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                className="px-2 py-1 bg-blue-100 text-red rounded hover:bg-gray-200"
               >
                 X
               </button>
