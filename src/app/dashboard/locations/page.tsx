@@ -31,10 +31,7 @@ export default function LocationsPage() {
 
     if (error) {
       console.error("❌ Error fetching locations:", error.message);
-      setMessage({
-        text: "❌ Error fetching locations: " + error.message,
-        type: "error",
-      });
+      setMessage({ text: "❌ Error fetching locations: " + error.message, type: "error" });
     } else {
       setLocations(data || []);
     }
@@ -49,75 +46,34 @@ export default function LocationsPage() {
         {
           name: newLocation,
           organization_id:
-            process.env.NEXT_PUBLIC_DEFAULT_ORG_ID ||
-            "00000000-0000-0000-0000-000000000001",
+            process.env.NEXT_PUBLIC_DEFAULT_ORG_ID || "00000000-0000-0000-0000-000000000001",
         },
       ])
       .select("*");
 
     if (error) {
       console.error("❌ Supabase insert error:", error.message);
-      setMessage({
-        text: "❌ Error adding location: " + error.message,
-        type: "error",
-      });
-    } else if (data && data.length > 0) {
+      setMessage({ text: "❌ Error adding location: " + error.message, type: "error" });
+    } else {
       setLocations((prev) => [...(data || []), ...prev]);
       setNewLocation("");
       setMessage({ text: "✅ Location added successfully!", type: "success" });
-    } else {
-      setMessage({ text: "🚫 Add not allowed for this user.", type: "error" });
     }
   };
 
   const deleteLocation = async (id: string) => {
-  if (!confirm("Are you sure you want to delete this location?")) return;
+    if (!confirm("Are you sure you want to delete this location?")) return;
 
-  const { error } = await supabase.from("locations").delete().eq("id", id);
+    const { error } = await supabase.from("locations").delete().eq("id", id);
 
-  if (error) {
-    console.error("❌ Error deleting location:", error.message);
-    setMessage({
-      text: "❌ Error deleting location: " + error.message,
-      type: "error",
-    });
-    return;
-  }
-
-  // Wait a moment to let RLS enforcement complete
-  await new Promise((resolve) => setTimeout(resolve, 700));
-
-  // Now verify whether the row is actually deleted
-  const { data: stillThere, error: checkError } = await supabase
-    .from("locations")
-    .select("id")
-    .eq("id", id);
-
-  if (checkError) {
-    console.error("❌ Error checking delete:", checkError.message);
-    setMessage({
-      text: "⚠️ Could not verify delete.",
-      type: "error",
-    });
-    return;
-  }
-
-  if (stillThere && stillThere.length > 0) {
-    // Row still exists → RLS blocked the delete silently
-    setMessage({
-      text: "🚫 Delete not allowed for this user.",
-      type: "error",
-    });
-  } else {
-    // Row is gone → success
-    setLocations((prev) => prev.filter((loc) => loc.id !== id));
-    setMessage({
-      text: "✅ Location deleted successfully!",
-      type: "success",
-    });
-  }
-};
-
+    if (error) {
+      console.error("❌ Error deleting location:", error.message);
+      setMessage({ text: "❌ Error deleting location: " + error.message, type: "error" });
+    } else {
+      setLocations((prev) => prev.filter((loc) => loc.id !== id));
+      setMessage({ text: "✅ Location deleted successfully!", type: "success" });
+    }
+  };
 
   return (
     <div className="p-6">
@@ -127,9 +83,7 @@ export default function LocationsPage() {
       {message && (
         <div
           className={`mb-4 p-2 rounded ${
-            message.type === "success"
-              ? "bg-green-100 text-green-800"
-              : "bg-red-100 text-red-800"
+            message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
           }`}
         >
           {message.text}
@@ -168,7 +122,7 @@ export default function LocationsPage() {
               <span>{loc.name}</span>
               <button
                 onClick={() => deleteLocation(loc.id)}
-                className="px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                className="px-2 py-1 bg-blue-100 text-red rounded hover:bg-grey-600"
               >
                 X
               </button>
