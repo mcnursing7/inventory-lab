@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import BarcodeScanner from '@/components/BarcodeScanner';
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 type Item = {
   id: string;
@@ -15,17 +15,31 @@ type Item = {
   created_at: string;
 };
 
+type Message = {
+  text: string;
+  type: "success" | "error";
+};
+
 export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([]);
-  const [sku, setSku] = useState('');
-  const [barcode, setBarcode] = useState('');
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState<number | ''>('');
+  const [sku, setSku] = useState("");
+  const [barcode, setBarcode] = useState("");
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState<number | "">("");
   const [minStock, setMinStock] = useState(0);
   const [maxStock, setMaxStock] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [message, setMessage] = useState<Message | null>(null);
+
+  // 🔔 Auto-hide messages after 3 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
   useEffect(() => {
     fetchItems();
@@ -33,20 +47,23 @@ export default function ItemsPage() {
 
   async function fetchItems() {
     const { data, error } = await supabase
-      .from('items')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .from("items")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    if (error) console.error(error);
-    else setItems(data || []);
+    if (error) {
+      console.error(error);
+      setMessage({ text: "❌ Error fetching items.", type: "error" });
+    } else {
+      setItems(data || []);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // ✅ Validation: min_stock cannot exceed max_stock
     if (minStock > maxStock) {
-      alert('❌ Min Stock cannot be greater than Max Stock');
+      setMessage({ text: "❌ Min Stock cannot be greater than Max Stock", type: "error" });
       return;
     }
 
@@ -56,54 +73,68 @@ export default function ItemsPage() {
       name,
       min_stock: minStock,
       max_stock: maxStock,
-      price: price === '' ? null : price,
+      price: price === "" ? null : price,
     };
 
     if (editingId) {
-      const { error } = await supabase
-        .from('items')
-        .update(itemData)
-        .eq('id', editingId);
+      const { error } = await supabase.from("items").update(itemData).eq("id", editingId);
 
-      if (error) alert('Update failed: ' + error.message);
-      else {
+      if (error) {
+        console.error(error);
+        setMessage({ text: "❌ Update failed: " + error.message, type: "error" });
+      } else {
         resetForm();
         fetchItems();
+        setMessage({ text: "✅ Item updated successfully!", type: "success" });
       }
     } else {
-      const { error } = await supabase.from('items').insert([itemData]);
+      const { error } = await supabase.from("items").insert([itemData]);
 
-      if (error) alert('Insert failed: ' + error.message);
-      else {
+      if (error) {
+        console.error(error);
+        setMessage({ text: "❌ Insert failed: " + error.message, type: "error" });
+      } else {
         resetForm();
         fetchItems();
+        setMessage({ text: "✅ Item added successfully!", type: "success" });
       }
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+    if (!confirm("Are you sure you want to delete this item?")) return;
 
-    const { error } = await supabase.from('items').delete().eq('id', id);
-    if (error) alert('Delete failed: ' + error.message);
-    else fetchItems();
+    const { error } = await supabase.from("items").delete().eq("id", id);
+
+    // Delay check for RLS block or async delete rollback
+    await new Promise((res) => setTimeout(res, 500));
+
+    const { data: check } = await supabase.from("items").select("id").eq("id", id);
+
+    if (error || (check && check.length > 0)) {
+      console.error("❌ Delete blocked or failed:", error?.message);
+      setMessage({ text: "❌ This user cannot delete.", type: "error" });
+    } else {
+      fetchItems();
+      setMessage({ text: "✅ Item deleted successfully!", type: "success" });
+    }
   }
 
   function handleEdit(item: Item) {
     setEditingId(item.id);
-    setSku(item.sku || '');
-    setBarcode(item.barcode || '');
+    setSku(item.sku || "");
+    setBarcode(item.barcode || "");
     setName(item.name);
-    setPrice(item.price ?? '');
+    setPrice(item.price ?? "");
     setMinStock(item.min_stock);
     setMaxStock(item.max_stock);
   }
 
   function resetForm() {
-    setSku('');
-    setBarcode('');
-    setName('');
-    setPrice('');
+    setSku("");
+    setBarcode("");
+    setName("");
+    setPrice("");
     setMinStock(0);
     setMaxStock(0);
     setEditingId(null);
@@ -120,6 +151,19 @@ export default function ItemsPage() {
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Items</h1>
 
+      {/* 🔔 Message Banner */}
+      {message && (
+        <div
+          className={`mb-4 p-2 rounded ${
+            message.type === "success"
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
+
       {/* Search + Scanner */}
       <div className="flex gap-2 mb-4">
         <input
@@ -133,11 +177,10 @@ export default function ItemsPage() {
           onClick={() => setScanning((prev) => !prev)}
           className="bg-blue-500 text-white px-4 rounded"
         >
-          {scanning ? 'Stop Scan' : 'Start Scan'}
+          {scanning ? "Stop Scan" : "Start Scan"}
         </button>
       </div>
 
-      {/* Barcode Scanner */}
       <BarcodeScanner
         active={scanning}
         onScan={(text) => {
@@ -177,7 +220,7 @@ export default function ItemsPage() {
           placeholder="Price"
           value={price}
           onChange={(e) =>
-            setPrice(e.target.value === '' ? '' : Number(e.target.value))
+            setPrice(e.target.value === "" ? "" : Number(e.target.value))
           }
           className="border p-2 rounded w-full"
         />
@@ -197,21 +240,20 @@ export default function ItemsPage() {
           className="border p-2 rounded w-full"
           required
         />
-        <button
-          type="submit"
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-        >
-          {editingId ? 'Update Item' : 'Add Item'}
-        </button>
-        {editingId && (
-          <button
-            type="button"
-            onClick={resetForm}
-            className="ml-2 bg-gray-400 text-white px-4 py-2 rounded"
-          >
-            Cancel
+        <div className="flex gap-2">
+          <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded">
+            {editingId ? "Update Item" : "Add Item"}
           </button>
-        )}
+          {editingId && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="bg-gray-400 text-white px-4 py-2 rounded"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
 
       {/* Item List */}
@@ -232,10 +274,10 @@ export default function ItemsPage() {
           {filtered.map((item) => (
             <tr key={item.id}>
               <td className="p-2 border">{item.sku}</td>
-              <td className="p-2 border">{item.barcode || '-'}</td>
+              <td className="p-2 border">{item.barcode || "-"}</td>
               <td className="p-2 border">{item.name}</td>
               <td className="p-2 border">
-                {item.price != null ? `$${item.price.toFixed(2)}` : '-'}
+                {item.price != null ? `$${item.price.toFixed(2)}` : "-"}
               </td>
               <td className="p-2 border">{item.min_stock}</td>
               <td className="p-2 border">{item.max_stock}</td>
@@ -253,7 +295,7 @@ export default function ItemsPage() {
                   onClick={() => handleDelete(item.id)}
                   className="bg-green-900 text-white px-4 py-1 rounded"
                 >
-                 X
+                  X
                 </button>
               </td>
             </tr>
