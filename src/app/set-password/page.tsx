@@ -15,14 +15,16 @@ export default function SetPasswordPage() {
     const restoreSession = async () => {
       const { data, error } = await supabase.auth.getSession();
 
+      // If no active session, try to exchange the URL code for a new session
       if (!data.session) {
-        const { error: recoverError } = await supabase.auth.getSessionFromUrl({
-          storeSession: true,
-        });
+        const { data: exchangeData, error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(window.location.href);
 
-        if (recoverError) {
-          console.error("Session restore failed:", recoverError.message);
+        if (exchangeError) {
+          console.error("Session restore failed:", exchangeError.message);
           setErrorMsg("Invalid or expired link.");
+        } else if (!exchangeData.session) {
+          setErrorMsg("Could not restore session. Try resetting again.");
         }
       }
     };
@@ -50,6 +52,7 @@ export default function SetPasswordPage() {
         return;
       }
 
+      // ✅ Redirect after successful password reset
       router.push("/dashboard");
     } catch (err: any) {
       console.error("Unexpected error:", err);
