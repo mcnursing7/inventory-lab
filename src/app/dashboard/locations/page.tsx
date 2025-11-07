@@ -23,6 +23,11 @@ export default function LocationsPage() {
     fetchLocations();
   }, []);
 
+  const showMessage = (msg: Message) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(null), 3000); // auto-hide
+  };
+
   const fetchLocations = async () => {
     const { data, error } = await supabase
       .from("locations")
@@ -31,7 +36,10 @@ export default function LocationsPage() {
 
     if (error) {
       console.error("❌ Error fetching locations:", error.message);
-      setMessage({ text: "❌ Error fetching locations: " + error.message, type: "error" });
+      showMessage({
+        text: "❌ Error fetching locations: " + error.message,
+        type: "error",
+      });
     } else {
       setLocations(data || []);
     }
@@ -46,18 +54,22 @@ export default function LocationsPage() {
         {
           name: newLocation,
           organization_id:
-            process.env.NEXT_PUBLIC_DEFAULT_ORG_ID || "00000000-0000-0000-0000-000000000001",
+            process.env.NEXT_PUBLIC_DEFAULT_ORG_ID ||
+            "00000000-0000-0000-0000-000000000001",
         },
       ])
       .select("*");
 
     if (error) {
       console.error("❌ Supabase insert error:", error.message);
-      setMessage({ text: "❌ Error adding location: " + error.message, type: "error" });
+      showMessage({
+        text: "❌ Error adding location: " + error.message,
+        type: "error",
+      });
     } else {
       setLocations((prev) => [...(data || []), ...prev]);
       setNewLocation("");
-      setMessage({ text: "✅ Location added successfully!", type: "success" });
+      showMessage({ text: "✅ Location added successfully!", type: "success" });
     }
   };
 
@@ -68,10 +80,41 @@ export default function LocationsPage() {
 
     if (error) {
       console.error("❌ Error deleting location:", error.message);
-      setMessage({ text: "❌ Error deleting location: " + error.message, type: "error" });
+      showMessage({
+        text: "❌ Error deleting location: " + error.message,
+        type: "error",
+      });
+      return;
+    }
+
+    // ✅ Give RLS time to rollback silently
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    // ✅ Check if the record was truly deleted or blocked by RLS
+    const { data: stillThere, error: checkError } = await supabase
+      .from("locations")
+      .select("id")
+      .eq("id", id);
+
+    if (checkError) {
+      console.error("❌ Error verifying delete:", checkError.message);
+      showMessage({ text: "⚠️ Could not verify delete.", type: "error" });
+      return;
+    }
+
+    if (stillThere && stillThere.length > 0) {
+      // ✅ RLS blocked deletion
+      showMessage({
+        text: "🚫 Delete not allowed for this user.",
+        type: "error",
+      });
     } else {
+      // ✅ Deletion succeeded
       setLocations((prev) => prev.filter((loc) => loc.id !== id));
-      setMessage({ text: "✅ Location deleted successfully!", type: "success" });
+      showMessage({
+        text: "✅ Location deleted successfully!",
+        type: "success",
+      });
     }
   };
 
@@ -83,7 +126,9 @@ export default function LocationsPage() {
       {message && (
         <div
           className={`mb-4 p-2 rounded ${
-            message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+            message.type === "success"
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
           }`}
         >
           {message.text}
@@ -122,7 +167,7 @@ export default function LocationsPage() {
               <span>{loc.name}</span>
               <button
                 onClick={() => deleteLocation(loc.id)}
-                className="px-2 py-1 bg-blue-100 text-red rounded hover:bg-grey-600"
+                className="px-2 py-1 bg-blue-100 text-red rounded hover:bg-gray-200"
               >
                 X
               </button>
