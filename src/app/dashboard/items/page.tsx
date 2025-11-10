@@ -293,9 +293,9 @@ export default function ItemsPage() {
                 </button>
                 <button
                   onClick={() => handleDelete(item.id)}
-                  className="bg-gray-300 text-red px-4 py-1 rounded"
+                  className="bg-blue-200 text-black px-4 py-1 rounded"
                 >
-                  ❌
+                  X
                 </button>
               </td>
             </tr>
