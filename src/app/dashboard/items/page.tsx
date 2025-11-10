@@ -293,7 +293,7 @@ export default function ItemsPage() {
                 </button>
                 <button
                   onClick={() => handleDelete(item.id)}
-                  className="bg-green-900 text-white px-4 py-1 rounded"
+                  className="bg-green-900 text-red px-4 py-1 rounded"
                 >
                   X
                 </button>
